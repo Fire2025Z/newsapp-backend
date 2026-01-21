@@ -1,11 +1,11 @@
-# server.py - Working version with OpenAI
+# server.py - Fixed version with compatible OpenAI SDK
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-from openai import OpenAI
+import openai  # Using older SDK version
 import requests
 
-print("🚀 AI News Assistant Server - OpenAI Version")
+print("🚀 AI News Assistant Server - OpenAI Version (Fixed)")
 
 # Get OpenAI API key from environment
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -18,8 +18,8 @@ if not OPENAI_API_KEY:
 print(f"✅ OpenAI API Key loaded")
 print(f"📝 Key starts with: {OPENAI_API_KEY[:12]}...")
 
-# Initialize OpenAI client with the new SDK
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Configure OpenAI with older SDK
+openai.api_key = OPENAI_API_KEY
 
 app = Flask(__name__)
 
@@ -143,8 +143,8 @@ def get_news():
         
         print("🤖 Calling OpenAI API...")
         
-        # Call OpenAI API
-        response = client.chat.completions.create(
+        # Call OpenAI API using older SDK syntax
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # Using 3.5 for faster/cheaper response
             messages=[
                 {"role": "system", "content": "You are a professional journalist."},
@@ -196,6 +196,7 @@ def test():
         'status': 'running',
         'service': 'AI News Assistant',
         'ai_provider': 'OpenAI GPT-3.5-turbo',
+        'sdk_version': '0.28.1',
         'endpoints': {
             '/get_news': 'POST - Get news by country, topic, language',
             '/test': 'GET - Server status',
@@ -223,12 +224,13 @@ def index():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
     print(f"\n{'='*60}")
-    print("AI NEWS ASSISTANT SERVER - OPENAI")
+    print("AI NEWS ASSISTANT SERVER - OPENAI (FIXED VERSION)")
     print(f"{'='*60}")
     print(f"🌍 Port: {port}")
     print(f"🔗 Health check: /health")
     print(f"📡 Main endpoint: /get_news")
     print(f"🤖 AI Model: GPT-3.5-turbo")
+    print(f"📦 OpenAI SDK: 0.28.1")
     print(f"{'='*60}")
     print("Server starting...")
     app.run(host='0.0.0.0', port=port, debug=False)
