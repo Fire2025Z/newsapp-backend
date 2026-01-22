@@ -1,12 +1,62 @@
-# server.py - 100% WORKING VERSION
+# server.py - WORKING VERSION WITH GEMINI AI
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import random
 import datetime
 import os
+import google.generativeai as genai
+import requests
 
+print("🚀 AI News Assistant Server - Gemini AI Version")
 
-print("🚀 AI News Assistant Server - WORKING VERSION")
+# Get Gemini API key from environment
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Initialize Gemini AI if API key is available
+ai_enabled = False
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        # Try to get available models
+        available_models = []
+        try:
+            for model in genai.list_models():
+                if 'generateContent' in model.supported_generation_methods:
+                    available_models.append(model.name)
+            print(f"✅ Gemini API Key loaded")
+            print(f"📋 Available models: {available_models}")
+            
+            # Use gemini-1.0-pro or gemini-pro based on availability
+            if 'models/gemini-1.0-pro' in available_models:
+                model = genai.GenerativeModel('gemini-1.0-pro')
+                ai_enabled = True
+                print("🤖 Using: gemini-1.0-pro")
+            elif 'models/gemini-pro' in available_models:
+                model = genai.GenerativeModel('models/gemini-pro')
+                ai_enabled = True
+                print("🤖 Using: models/gemini-pro")
+            else:
+                print("⚠️ No suitable Gemini model found")
+                ai_enabled = False
+        except:
+            # Fallback to direct model creation
+            try:
+                model = genai.GenerativeModel('gemini-1.0-pro')
+                ai_enabled = True
+                print("🤖 Using: gemini-1.0-pro (fallback)")
+            except:
+                try:
+                    model = genai.GenerativeModel('models/gemini-pro')
+                    ai_enabled = True
+                    print("🤖 Using: models/gemini-pro (fallback)")
+                except Exception as e:
+                    print(f"⚠️ Gemini initialization failed: {e}")
+                    ai_enabled = False
+    except Exception as e:
+        print(f"⚠️ Gemini API configuration failed: {e}")
+        ai_enabled = False
+else:
+    print("⚠️ GEMINI_API_KEY not set. Using demo mode.")
 
 app = Flask(__name__)
 
@@ -26,9 +76,85 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-def generate_ai_news(country, topic):
-    """Generate realistic AI-style news"""
-    
+# YOUR PROMPT FUNCTION - KEPT EXACTLY AS YOU WANTED
+def get_news_prompt(country, topic):
+    prompt = f"""You are a professional journalist and news assistant. Generate news about {topic} for {country}.
+
+IMPORTANT INSTRUCTIONS:
+1. Always generate in English first (for quality)
+2. Use this exact structure:
+   HEADLINE: [Clear, factual headline]
+   
+   SUMMARY: [2-3 sentence summary of main story]
+   
+   KEY DEVELOPMENTS:
+   • [Bullet point 1]
+   • [Bullet point 2]
+   • [Bullet point 3]
+   • [Bullet point 4]
+   
+   CONTEXT: [Relevant background information]
+   
+   SOURCES: [Mention credible sources if applicable]
+
+3. Rules:
+   - Focus on latest developments (last 24-48 hours)
+   - Use neutral, factual tone
+   - No sensationalism or bias
+   - If specific country info is limited, provide regional context
+   - Never invent facts or sources
+   - For political topics, use balanced perspective
+
+Generate comprehensive news report about {topic} in {country}."""
+
+    return prompt
+
+def translate_text(text, target_language):
+    """Translate text using Google Translate API"""
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        
+        language_map = {
+            'ar': 'ar',
+            'ku': 'ckb',
+            'en': 'en'
+        }
+        
+        target_lang_code = language_map.get(target_language, 'en')
+        
+        params = {
+            'client': 'gtx',
+            'sl': 'en',
+            'tl': target_lang_code,
+            'dt': 't',
+            'q': text
+        }
+        
+        response = requests.get(url, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            translated_parts = []
+            for sentence in data[0]:
+                if sentence and len(sentence) > 0:
+                    translated_text = sentence[0] if sentence[0] else ''
+                    if translated_text:
+                        translated_parts.append(translated_text)
+            
+            if translated_parts:
+                translated_text = ' '.join(translated_parts)
+                
+                if target_language in ['ar', 'ku']:
+                    translated_text = '\u200F' + translated_text
+                
+                return translated_text
+        return None
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return None
+
+def generate_demo_news(country, topic):
+    """Generate demo news when AI is not available"""
     # Country-specific details
     country_details = {
         'Iraq': {'capital': 'Baghdad', 'region': 'Middle East'},
@@ -43,67 +169,32 @@ def generate_ai_news(country, topic):
         'Global': {'capital': 'Worldwide', 'region': 'Global'}
     }
     
-    # Topic-specific content
-    topic_templates = {
-        'Breaking News': [
-            "Urgent developments unfolding",
-            "Major announcement made",
-            "Critical situation emerging",
-            "Breaking story developing"
-        ],
-        'Politics': [
-            "Political landscape shifting",
-            "Diplomatic efforts intensifying",
-            "Policy changes announced",
-            "Election developments underway"
-        ],
-        'Technology': [
-            "Tech innovation accelerating",
-            "Digital transformation progressing",
-            "Startup ecosystem growing",
-            "Research breakthroughs announced"
-        ],
-        'Sports': [
-            "Championship events concluding",
-            "Record-breaking performances",
-            "Team strategies evolving",
-            "Athlete achievements celebrated"
-        ],
-        'Business': [
-            "Market trends showing positive signs",
-            "Corporate strategies adapting",
-            "Investment opportunities emerging",
-            "Economic indicators improving"
-        ]
-    }
-    
     country_info = country_details.get(country, {'capital': 'the region', 'region': 'the area'})
-    template = topic_templates.get(topic, topic_templates['Breaking News'])
     
     # Generate news components
     headlines = [
-        f"Major {topic} Developments Reported in {country}",
-        f"{country} Announces New {topic} Initiatives",
-        f"{topic} Landscape Evolving in {country}",
-        f"International Focus on {country}'s {topic} Progress",
-        f"{country} Leads Regional {topic} Advancements"
+        f"Latest {topic} Updates from {country}",
+        f"{country} Reports Progress in {topic}",
+        f"{topic} Developments in {country} Show Positive Trends",
+        f"International Community Observes {topic} Advancements in {country}",
+        f"{country}'s {topic} Sector Experiences Growth"
     ]
     
     summaries = [
-        f"Significant progress in {topic.lower()} has been reported across {country}, with experts noting positive trends and emerging opportunities in {country_info['region']}.",
-        f"As {country} continues to develop its {topic.lower()} strategies, recent developments indicate a promising trajectory for regional cooperation and economic growth.",
-        f"New analysis of {topic.lower()} in {country} reveals both challenges and remarkable achievements, marking an important phase in the country's development journey."
+        f"Recent developments in {topic.lower()} across {country} indicate positive momentum, with experts noting improved conditions in {country_info['region']}.",
+        f"As {country} continues to implement its {topic.lower()} strategies, observable progress has been reported by regional analysts and international observers.",
+        f"New assessments of {topic.lower()} in {country} reveal ongoing developments and emerging opportunities for regional cooperation and economic advancement."
     ]
     
     points = [
-        "New collaborative agreements signed with international partners",
-        "Economic indicators show upward movement in key sectors",
-        "Technological adoption reaching new record levels",
-        "Policy reforms creating more favorable investment climate",
-        "Community engagement and participation exceeding expectations",
-        "Infrastructure development projects advancing on schedule",
-        "Educational and training programs expanding rapidly",
-        "Environmental sustainability measures being implemented"
+        "Enhanced regional cooperation initiatives underway",
+        "Economic indicators showing gradual improvement",
+        "Infrastructure development projects making steady progress",
+        "Educational and vocational training programs expanding",
+        "Technology adoption increasing across multiple sectors",
+        "Environmental conservation efforts gaining traction",
+        "Cultural exchange programs strengthening international ties",
+        "Healthcare system improvements being implemented"
     ]
     
     headline = random.choice(headlines)
@@ -121,20 +212,20 @@ KEY DEVELOPMENTS:
 • {selected_points[2]}
 • {selected_points[3]}
 
-CONTEXT: This analysis focuses on recent {topic.lower()} developments in {country}, examining progress in {country_info['region']}. The report highlights both achievements and ongoing challenges.
+CONTEXT: This report examines current {topic.lower()} conditions in {country}, providing insights into recent progress within {country_info['region']}.
 
-REGIONAL IMPACT: Developments in {country} are influencing broader trends across {country_info['region']}, with implications for international cooperation and economic partnerships.
+REGIONAL PERSPECTIVE: Developments in {country} contribute to broader regional stability and cooperation efforts in {country_info['region']}.
 
-FUTURE OUTLOOK: Experts anticipate continued progress in {topic.lower()} as {country} implements its strategic development plans and strengthens regional partnerships.
+SOURCES: Regional analysts, international observers, and local reports.
 
 GENERATED: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-AI NEWS ASSISTANT | Country: {country} | Topic: {topic} | Language: English"""
+AI NEWS ASSISTANT | Demo Mode | Country: {country} | Topic: {topic}"""
 
     return news_content
 
 @app.route('/get_news', methods=['POST', 'OPTIONS'])
 def get_news():
-    """Handle news requests - 100% WORKING"""
+    """Handle news requests - Works with AI or Demo"""
     if request.method == 'OPTIONS':
         return jsonify({'status': 'ok'}), 200
     
@@ -148,12 +239,40 @@ def get_news():
         original_language = data.get('original_language', 'en')
         needs_translation = data.get('needs_translation', False)
         
-        print(f"✅ Request received: {country} | {topic}")
+        print(f"📰 Request: {country} | {topic} | AI: {'Enabled' if ai_enabled else 'Demo'}")
         
-        # Generate AI-style news
-        news_content = generate_ai_news(country, topic)
+        news_content = None
+        ai_provider = "Demo Mode"
         
-        print(f"✅ News generated ({len(news_content)} characters)")
+        # Try AI first if enabled
+        if ai_enabled:
+            try:
+                prompt = get_news_prompt(country, topic)
+                print("🤖 Calling Gemini AI...")
+                
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.GenerationConfig(
+                        temperature=0.4,
+                        max_output_tokens=2000,
+                    )
+                )
+                
+                if response.text:
+                    news_content = response.text
+                    ai_provider = "Google Gemini AI"
+                    print(f"✅ AI response received ({len(news_content)} chars)")
+                else:
+                    print("⚠️ AI returned empty response, using demo")
+                    
+            except Exception as ai_error:
+                print(f"⚠️ AI error: {ai_error}")
+                # Fall through to demo mode
+        
+        # Use demo if AI failed or not enabled
+        if not news_content:
+            news_content = generate_demo_news(country, topic)
+            print(f"✅ Demo news generated ({len(news_content)} chars)")
         
         result = {
             'description': news_content,
@@ -163,19 +282,23 @@ def get_news():
             'topic': topic,
             'translated_description': None,
             'is_rtl': False,
-            'ai_provider': 'AI News Assistant',
-            'note': 'Generated with intelligent algorithms'
+            'ai_provider': ai_provider,
+            'ai_enabled': ai_enabled
         }
         
-        # Simulate translation for Kurdish/Arabic
+        # Translate if needed
         if needs_translation and original_language != 'en':
-            print(f"🌍 Translation simulated for {original_language}")
-            # In a real app, this would call translation API
-            # For now, we'll mark as RTL for Arabic/Kurdish
-            if original_language in ['ar', 'ku']:
-                result['is_rtl'] = True
-                result['translated_description'] = news_content + "\n\n[تمت الترجمة إلى العربية]" if original_language == 'ar' else news_content + "\n\n[ترجمە بۆ کوردی]"
+            print(f"🌍 Translating to {original_language}...")
+            translated_text = translate_text(news_content, original_language)
+            if translated_text:
+                result['translated_description'] = translated_text
+                if original_language in ['ar', 'ku']:
+                    result['is_rtl'] = True
+                print(f"✅ Translation completed")
+            else:
+                print("⚠ Translation failed, keeping English")
         
+        print(f"🎉 Request completed successfully")
         return jsonify(result)
         
     except Exception as e:
@@ -187,12 +310,13 @@ def get_news():
 
 @app.route('/test', methods=['GET'])
 def test():
-    """Test endpoint - ALWAYS WORKS"""
+    """Test endpoint"""
     return jsonify({
         'status': 'running',
         'service': 'AI News Assistant',
-        'version': '1.0.0',
-        'message': 'Server is working perfectly!',
+        'ai_status': 'Enabled' if ai_enabled else 'Demo Mode',
+        'ai_provider': 'Google Gemini' if ai_enabled else 'Demo',
+        'version': '1.1.0',
         'endpoints': {
             '/get_news': 'POST - Get AI-generated news',
             '/test': 'GET - Server status',
@@ -208,7 +332,7 @@ def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'uptime': 'Server is running',
+        'ai_enabled': ai_enabled,
         'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
 
@@ -218,6 +342,7 @@ def index():
     return jsonify({
         'message': 'AI News Assistant API',
         'description': 'Country + Language + Topic AI News System',
+        'ai_status': 'Enabled' if ai_enabled else 'Demo Mode',
         'status': 'active',
         'developer': 'Zinar Mizury',
         'usage': 'Send POST requests to /get_news with country, topic, language parameters'
@@ -226,14 +351,17 @@ def index():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
     print(f"\n{'='*60}")
-    print("🤖 AI NEWS ASSISTANT SERVER - READY")
+    print("🤖 AI NEWS ASSISTANT SERVER - GEMINI AI")
     print(f"{'='*60}")
     print(f"🌍 Port: {port}")
+    print(f"🤖 AI Status: {'ENABLED' if ai_enabled else 'DEMO MODE'}")
+    if ai_enabled:
+        print(f"🔑 API Key: Loaded successfully")
+    else:
+        print(f"🔑 API Key: Not set or invalid")
+        print(f"💡 Set GEMINI_API_KEY in Railway for real AI news")
     print(f"✅ Health check: /health")
     print(f"📡 Main endpoint: /get_news")
-    print(f"🎯 Countries: 10 supported")
-    print(f"📰 Topics: 24 categories")
-    print(f"💬 Languages: English, Arabic, Kurdish")
     print(f"{'='*60}")
     print("Server starting...")
     app.run(host='0.0.0.0', port=port, debug=False)
