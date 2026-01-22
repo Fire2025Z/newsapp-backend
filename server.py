@@ -1,62 +1,42 @@
-# server.py - WORKING VERSION WITH GEMINI AI
+# server.py - UPDATED with new google-genai package
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import random
 import datetime
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import requests
 
-print("🚀 AI News Assistant Server - Gemini AI Version")
+print("🚀 AI News Assistant Server - Updated Gemini API")
 
 # Get Gemini API key from environment
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Initialize Gemini AI if API key is available
 ai_enabled = False
+client = None
+
 if GEMINI_API_KEY:
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        # Try to get available models
-        available_models = []
-        try:
-            for model in genai.list_models():
-                if 'generateContent' in model.supported_generation_methods:
-                    available_models.append(model.name)
-            print(f"✅ Gemini API Key loaded")
-            print(f"📋 Available models: {available_models}")
-            
-            # Use gemini-1.0-pro or gemini-pro based on availability
-            if 'models/gemini-1.0-pro' in available_models:
-                model = genai.GenerativeModel('gemini-1.0-pro')
-                ai_enabled = True
-                print("🤖 Using: gemini-1.0-pro")
-            elif 'models/gemini-pro' in available_models:
-                model = genai.GenerativeModel('models/gemini-pro')
-                ai_enabled = True
-                print("🤖 Using: models/gemini-pro")
-            else:
-                print("⚠️ No suitable Gemini model found")
-                ai_enabled = False
-        except:
-            # Fallback to direct model creation
-            try:
-                model = genai.GenerativeModel('gemini-1.0-pro')
-                ai_enabled = True
-                print("🤖 Using: gemini-1.0-pro (fallback)")
-            except:
-                try:
-                    model = genai.GenerativeModel('models/gemini-pro')
-                    ai_enabled = True
-                    print("🤖 Using: models/gemini-pro (fallback)")
-                except Exception as e:
-                    print(f"⚠️ Gemini initialization failed: {e}")
-                    ai_enabled = False
+        # Initialize with new client
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        # Test the connection with a simple call
+        test_response = client.models.list()
+        print(f"✅ Gemini API Key loaded successfully")
+        print(f"📋 Available models: {[m.name for m in test_response.models][:3]}...")
+        
+        ai_enabled = True
+        print("🤖 AI: ENABLED (Using Gemini 1.5 Flash)")
+        
     except Exception as e:
-        print(f"⚠️ Gemini API configuration failed: {e}")
+        print(f"⚠️ Gemini initialization failed: {e}")
+        print("💡 Using demo mode. Check your API key and region.")
         ai_enabled = False
 else:
     print("⚠️ GEMINI_API_KEY not set. Using demo mode.")
+    print("💡 Get FREE key: https://aistudio.google.com/app/apikey")
 
 app = Flask(__name__)
 
@@ -76,7 +56,7 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-# YOUR PROMPT FUNCTION - KEPT EXACTLY AS YOU WANTED
+# YOUR PROMPT FUNCTION - KEPT EXACTLY
 def get_news_prompt(country, topic):
     prompt = f"""You are a professional journalist and news assistant. Generate news about {topic} for {country}.
 
@@ -155,7 +135,6 @@ def translate_text(text, target_language):
 
 def generate_demo_news(country, topic):
     """Generate demo news when AI is not available"""
-    # Country-specific details
     country_details = {
         'Iraq': {'capital': 'Baghdad', 'region': 'Middle East'},
         'Syria': {'capital': 'Damascus', 'region': 'Middle East'},
@@ -171,7 +150,6 @@ def generate_demo_news(country, topic):
     
     country_info = country_details.get(country, {'capital': 'the region', 'region': 'the area'})
     
-    # Generate news components
     headlines = [
         f"Latest {topic} Updates from {country}",
         f"{country} Reports Progress in {topic}",
@@ -201,7 +179,6 @@ def generate_demo_news(country, topic):
     summary = random.choice(summaries)
     selected_points = random.sample(points, 4)
     
-    # Generate the news content
     news_content = f"""HEADLINE: {headline}
 
 SUMMARY: {summary}
@@ -245,14 +222,16 @@ def get_news():
         ai_provider = "Demo Mode"
         
         # Try AI first if enabled
-        if ai_enabled:
+        if ai_enabled and client:
             try:
                 prompt = get_news_prompt(country, topic)
-                print("🤖 Calling Gemini AI...")
+                print("🤖 Calling Gemini AI (new API)...")
                 
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
+                # Use the new API format
+                response = client.models.generate_content(
+                    model="gemini-1.5-flash",  # Updated model name
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
                         temperature=0.4,
                         max_output_tokens=2000,
                     )
@@ -260,14 +239,31 @@ def get_news():
                 
                 if response.text:
                     news_content = response.text
-                    ai_provider = "Google Gemini AI"
+                    ai_provider = "Google Gemini AI 1.5"
                     print(f"✅ AI response received ({len(news_content)} chars)")
                 else:
                     print("⚠️ AI returned empty response, using demo")
                     
             except Exception as ai_error:
                 print(f"⚠️ AI error: {ai_error}")
-                # Fall through to demo mode
+                # Try alternative model
+                try:
+                    print("🔄 Trying alternative model...")
+                    response = client.models.generate_content(
+                        model="gemini-1.5-pro",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.4,
+                            max_output_tokens=2000,
+                        )
+                    )
+                    if response.text:
+                        news_content = response.text
+                        ai_provider = "Google Gemini AI 1.5 Pro"
+                        print(f"✅ AI response received ({len(news_content)} chars)")
+                except Exception as e2:
+                    print(f"⚠️ Alternative model also failed: {e2}")
+                    # Fall through to demo mode
         
         # Use demo if AI failed or not enabled
         if not news_content:
@@ -295,8 +291,6 @@ def get_news():
                 if original_language in ['ar', 'ku']:
                     result['is_rtl'] = True
                 print(f"✅ Translation completed")
-            else:
-                print("⚠ Translation failed, keeping English")
         
         print(f"🎉 Request completed successfully")
         return jsonify(result)
@@ -315,8 +309,9 @@ def test():
         'status': 'running',
         'service': 'AI News Assistant',
         'ai_status': 'Enabled' if ai_enabled else 'Demo Mode',
-        'ai_provider': 'Google Gemini' if ai_enabled else 'Demo',
-        'version': '1.1.0',
+        'ai_provider': 'Google Gemini 1.5' if ai_enabled else 'Demo',
+        'gemini_api_version': 'google-genai (new)',
+        'version': '2.0.0',
         'endpoints': {
             '/get_news': 'POST - Get AI-generated news',
             '/test': 'GET - Server status',
@@ -336,31 +331,31 @@ def health():
         'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
 
-@app.route('/', methods=['GET'])
-def index():
-    """Root endpoint"""
+@app.route('/debug', methods=['GET'])
+def debug():
+    """Debug endpoint"""
     return jsonify({
-        'message': 'AI News Assistant API',
-        'description': 'Country + Language + Topic AI News System',
-        'ai_status': 'Enabled' if ai_enabled else 'Demo Mode',
-        'status': 'active',
-        'developer': 'Zinar Mizury',
-        'usage': 'Send POST requests to /get_news with country, topic, language parameters'
+        'ai_enabled': ai_enabled,
+        'gemini_key_set': bool(GEMINI_API_KEY),
+        'gemini_key_length': len(GEMINI_API_KEY) if GEMINI_API_KEY else 0,
+        'client_initialized': bool(client),
+        'server_time': datetime.datetime.now().isoformat()
     })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
     print(f"\n{'='*60}")
-    print("🤖 AI NEWS ASSISTANT SERVER - GEMINI AI")
+    print("🤖 AI NEWS ASSISTANT - UPDATED GEMINI API")
     print(f"{'='*60}")
     print(f"🌍 Port: {port}")
     print(f"🤖 AI Status: {'ENABLED' if ai_enabled else 'DEMO MODE'}")
     if ai_enabled:
         print(f"🔑 API Key: Loaded successfully")
     else:
-        print(f"🔑 API Key: Not set or invalid")
-        print(f"💡 Set GEMINI_API_KEY in Railway for real AI news")
+        print(f"🔑 API Key: {'Not set' if not GEMINI_API_KEY else 'Invalid/Error'}")
+        print(f"💡 Get FREE key: https://aistudio.google.com/app/apikey")
     print(f"✅ Health check: /health")
+    print(f"🐛 Debug: /debug")
     print(f"📡 Main endpoint: /get_news")
     print(f"{'='*60}")
     print("Server starting...")
