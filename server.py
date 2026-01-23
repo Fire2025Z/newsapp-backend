@@ -8,7 +8,7 @@ import json
 print("🚀 AI NEWS SEARCHER SERVER")
 
 # API Keys
-# GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 # TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")  # https://tavily.com (free tier available)
 # # OR
 # SERPER_API_KEY = os.environ.get("SERPER_API_KEY")  # https://serper.dev (free tier)
