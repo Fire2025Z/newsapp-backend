@@ -282,7 +282,7 @@ if __name__ == '__main__':
     print(f"\n" + "="*50)
     print("🤖 AI NEWS SEARCHER SERVER")
     print("="*50)
-    print(f"🔍 Web Search: {'✅ Tavily' if TAVILY_API_KEY else '✅ Serper' if SERPER_API_KEY else '❌ Not configured'}")
+    # print(f"🔍 Web Search: {'✅ Tavily' if TAVILY_API_KEY else '✅ Serper' if SERPER_API_KEY else '❌ Not configured'}")
     print(f"🤖 Groq AI: {'✅ Available' if GROQ_API_KEY else '❌ Not configured'}")
     print(f"🌐 Port: {port}")
     print("\nEndpoints:")
