@@ -1,163 +1,150 @@
-# server.py - AI with Web Search
+# server.py - PURE GROQ NEWS SERVER
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import requests
 import json
+from datetime import datetime
 
-print("🚀 AI NEWS SEARCHER SERVER")
+print("🚀 PURE GROQ NEWS SERVER")
 
-# API Keys
+# Groq API Key
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-# TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")  # https://tavily.com (free tier available)
-# # OR
-# SERPER_API_KEY = os.environ.get("SERPER_API_KEY")  # https://serper.dev (free tier)
+
+if not GROQ_API_KEY:
+    print("❌ ERROR: GROQ_API_KEY not found!")
+    print("💡 Get one at: https://console.groq.com")
+    exit(1)
 
 app = Flask(__name__)
 CORS(app)
 
-def search_web_news(country, topic):
-    """Search real news from the web"""
-    search_query = f"{topic} news {country} today latest"
+# Country-specific prompts
+COUNTRY_PROMPTS = {
+    'Iraq': {
+        'sources': ['Reuters', 'Al Jazeera', 'BBC Arabic', 'Iraqi News Agency', 'Rudaw'],
+        'context': 'Focus on political developments, security, oil industry, and reconstruction.'
+    },
+    'Syria': {
+        'sources': ['Reuters', 'AP News', 'Al Jazeera', 'Syrian Arab News Agency'],
+        'context': 'Cover humanitarian situation, political developments, and regional diplomacy.'
+    },
+    'Kurdistan Region': {
+        'sources': ['Rudaw', 'BasNews', 'Kurdistan 24', 'BBC Kurdish'],
+        'context': 'Focus on regional government, Peshmerga, oil exports, and Turkey relations.'
+    },
+    'Iran': {
+        'sources': ['Reuters', 'AP', 'BBC Persian', 'Iran International'],
+        'context': 'Nuclear program, protests, economy, and regional influence.'
+    },
+    'Turkey': {
+        'sources': ['Reuters', 'AP', 'BBC Turkish', 'Daily Sabah', 'Hurriyet'],
+        'context': 'Economy, politics, Syrian refugees, and NATO relations.'
+    },
+    'Germany': {
+        'sources': ['Reuters', 'AP', 'DW', 'Spiegel', 'FAZ'],
+        'context': 'Economy, EU politics, energy transition, and technology.'
+    },
+    'Sweden': {
+        'sources': ['Reuters', 'AP', 'SVT', 'DN', 'TT News Agency'],
+        'context': 'NATO membership, innovation, climate policy, and social welfare.'
+    },
+    'United States': {
+        'sources': ['Reuters', 'AP', 'CNN', 'NY Times', 'Washington Post'],
+        'context': 'Politics, economy, technology, and foreign policy.'
+    },
+    'Global': {
+        'sources': ['Reuters', 'AP', 'BBC', 'AFP', 'Bloomberg'],
+        'context': 'Major international developments and global trends.'
+    }
+}
+
+def generate_groq_news(country, topic, language):
+    """Generate news report using Groq's knowledge"""
     
-    # Option A: Using Tavily (recommended for AI agents)
-    if TAVILY_API_KEY:
-        try:
-            print(f"🔍 Searching web with Tavily: {search_query}")
-            
-            tavily_response = requests.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": TAVILY_API_KEY,
-                    "query": search_query,
-                    "search_depth": "advanced",
-                    "include_answer": False,
-                    "include_raw_content": True,
-                    "max_results": 8,
-                    "include_domains": [
-                        "bbc.com", "reuters.com", "apnews.com", 
-                        "aljazeera.com", "dw.com", "cnn.com",
-                        "nytimes.com", "theguardian.com"
-                    ]
-                },
-                timeout=30
-            )
-            
-            if tavily_response.status_code == 200:
-                data = tavily_response.json()
-                
-                # Format search results
-                news_sources = []
-                for result in data.get('results', []):
-                    source = {
-                        'title': result.get('title', ''),
-                        'content': result.get('content', ''),
-                        'url': result.get('url', ''),
-                        'source': result.get('source', '')
-                    }
-                    news_sources.append(source)
-                
-                print(f"✅ Found {len(news_sources)} sources")
-                return news_sources
-                
-        except Exception as e:
-            print(f"⚠️ Tavily error: {e}")
+    country_info = COUNTRY_PROMPTS.get(country, COUNTRY_PROMPTS['Global'])
     
-    # Option B: Using Serper (Google search)
-    elif SERPER_API_KEY:
-        try:
-            print(f"🔍 Searching with Serper: {search_query}")
-            
-            serper_response = requests.post(
-                "https://google.serper.dev/search",
-                headers={"X-API-KEY": SERPER_API_KEY},
-                json={"q": search_query, "num": 10},
-                timeout=30
-            )
-            
-            if serper_response.status_code == 200:
-                data = serper_response.json()
-                news_sources = []
-                
-                for result in data.get('organic', []):
-                    source = {
-                        'title': result.get('title', ''),
-                        'snippet': result.get('snippet', ''),
-                        'url': result.get('link', ''),
-                        'source': result.get('source', '')
-                    }
-                    news_sources.append(source)
-                
-                print(f"✅ Found {len(news_sources)} sources via Serper")
-                return news_sources
-                
-        except Exception as e:
-            print(f"⚠️ Serper error: {e}")
+    # Get current date for realism
+    current_date = datetime.now().strftime("%B %d, %Y")
     
-    return []
+    prompt = f"""You are a professional journalist for an international news agency.
+Today's date: {current_date}
 
-def ai_process_news(news_sources, country, topic, language):
-    """Let AI analyze and summarize found news"""
-    
-    # Prepare context for AI
-    context_text = "Here are recent news sources I found:\n\n"
-    
-    for i, source in enumerate(news_sources[:6], 1):
-        context_text += f"SOURCE {i}:\n"
-        context_text += f"Title: {source.get('title', 'N/A')}\n"
-        
-        if source.get('content'):
-            content_preview = source['content'][:300] + "..." if len(source['content']) > 300 else source['content']
-            context_text += f"Content: {content_preview}\n"
-        elif source.get('snippet'):
-            context_text += f"Snippet: {source['snippet']}\n"
-            
-        context_text += f"URL: {source.get('url', 'N/A')}\n"
-        context_text += f"Source: {source.get('source', 'Unknown')}\n"
-        context_text += "-" * 50 + "\n"
-    
-    # AI prompt
-    prompt = f"""You are a news journalist. Based on these recent sources about {topic} in {country}, create a comprehensive news report.
+GENERATE A REALISTIC NEWS REPORT about: {topic.upper()} in {country.upper()}
 
-{context_text}
+USE THIS EXACT STRUCTURE:
 
-IMPORTANT: ONLY use information from the sources above. Do not make up news.
+📰 **BREAKING NEWS REPORT** - {current_date}
 
-Please provide in this exact format:
-📰 **HEADLINE**: [Main headline based on sources]
+🌍 **LOCATION**: {country}
+📊 **TOPIC**: {topic}
 
-📋 **EXECUTIVE SUMMARY**: [2-3 paragraph summary]
+🎯 **EXECUTIVE SUMMARY**: [2-3 paragraphs summarizing key developments]
 
-🔑 **KEY DEVELOPMENTS**:
-• [Point 1 with source reference]
-• [Point 2 with source reference]
-• [Point 3 with source reference]
+🔴 **LATEST DEVELOPMENTS**:
+• [Development 1 with specific details]
+• [Development 2 with specific details]
+• [Development 3 with specific details]
+• [Development 4 with specific details]
 
-🌍 **CONTEXT & BACKGROUND**: [Why this matters]
+📈 **KEY FACTS & FIGURES**:
+- [Fact 1 with numbers if available]
+- [Fact 2 with numbers if available]
+- [Fact 3 with numbers if available]
 
-📊 **ANALYSIS**: [Expert analysis based on sources]
+🤝 **STAKEHOLDERS INVOLVED**:
+- [Who is involved]
+- [Their positions/interests]
 
-🔗 **SOURCES CITED**:
-- [Source 1: website.com]
-- [Source 2: website.com]
+💡 **ANALYSIS & IMPLICATIONS**:
+[2 paragraphs of expert analysis]
 
-Write in {language} language."""
+🎙️ **EXPERT QUOTES**:
+"[Realistic quote from expert]"
+- [Expert name], [Title]
+
+📅 **BACKGROUND CONTEXT**:
+{country_info['context']}
+
+📋 **NEXT STEPS TO WATCH**:
+• [What might happen next]
+• [Key dates/deadlines]
+
+🔗 **REPORTING SOURCES** (as if researched):
+- {', '.join(country_info['sources'])}
+
+⚠️ **IMPORTANT INSTRUCTIONS**:
+1. Make it sound CURRENT and TIMELY
+2. Include realistic details (names, places, numbers)
+3. Be factual and neutral
+4. Use journalistic tone
+5. If about future, use words like "expected", "planned", "proposed"
+6. Write in {language} language
+7. Format with clear sections as shown above
+
+BEGIN YOUR NEWS REPORT:"""
 
     try:
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
         
+        # Use Mixtral for best news generation
         payload = {
-            "model": "mixtral-8x7b-32768",  # Groq model with large context
+            "model": "mixtral-8x7b-32768",  # Good for long, detailed content
             "messages": [
-                {"role": "system", "content": "You are a factual journalist. Only report what you see in sources."},
+                {
+                    "role": "system", 
+                    "content": """You are a top international journalist. Generate realistic, detailed news reports that sound current and timely. Include specific details, names, places, and numbers where appropriate. Be factual and neutral in tone."""
+                },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.2,  # Low temperature for factual reporting
-            "max_tokens": 1500,
-            "top_p": 0.9
+            "temperature": 0.7,  # Balanced creativity/factuality
+            "max_tokens": 2000,
+            "top_p": 0.9,
+            "frequency_penalty": 0.1,
+            "presence_penalty": 0.1
         }
         
-        print(f"🤖 AI processing {len(news_sources)} sources...")
+        print(f"🤖 Generating {topic} news for {country} in {language}...")
         
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
@@ -168,85 +155,63 @@ Write in {language} language."""
         
         if response.status_code == 200:
             data = response.json()
-            ai_response = data['choices'][0]['message']['content']
-            print(f"✅ AI generated {len(ai_response)} chars")
-            return ai_response
+            news_report = data['choices'][0]['message']['content']
+            
+            print(f"✅ Generated {len(news_report)} characters")
+            print(f"📝 Preview: {news_report[:150]}...")
+            
+            return news_report
             
         else:
-            print(f"❌ AI error: {response.status_code}")
-            return f"Latest {topic} news in {country}. AI processing unavailable."
+            error_msg = response.text[:200] if response.text else 'No response'
+            print(f"❌ Groq API error {response.status_code}: {error_msg}")
+            
+            # Try fallback model
+            return generate_fallback_news(country, topic, language)
             
     except Exception as e:
-        print(f"❌ AI processing failed: {e}")
-        return f"Recent developments in {topic} for {country}. Sources found: {len(news_sources)}."
+        print(f"❌ Generation error: {e}")
+        return generate_fallback_news(country, topic, language)
 
-@app.route('/get_news', methods=['POST', 'OPTIONS'])
-def get_news():
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'}), 200
-    
-    try:
-        data = request.get_json()
-        country = data.get('country', 'Global')
-        topic = data.get('topic', 'Breaking News')
-        language = data.get('language', 'English')
-        
-        print(f"📡 Request: {country} | {topic} | {language}")
-        
-        # Step 1: Search the web for real news
-        print("🔍 Step 1: Searching web for news...")
-        news_sources = search_web_news(country, topic)
-        
-        if not news_sources:
-            print("⚠️ No sources found, using AI fallback")
-            # Fallback to AI-generated summary
-            prompt = f"Generate a factual news report about {topic} in {country} based on general knowledge up to 2024."
-            news_sources = [{'title': f'{topic} in {country}', 'content': 'Recent developments', 'source': 'AI Analysis'}]
-        
-        # Step 2: Let AI process and summarize
-        print("🤖 Step 2: AI processing news...")
-        ai_news = ai_process_news(news_sources, country, topic, language)
-        
-        # Step 3: Handle translation if needed
-        needs_translation = data.get('needs_translation', False)
-        original_language = data.get('original_language', 'en')
-        
-        translated_content = None
-        if needs_translation and original_language != 'en':
-            translated_content = translate_with_ai(ai_news, original_language)
-        
-        return jsonify({
-            'description': ai_news,
-            'translated_description': translated_content,
-            'success': True,
-            'country': country,
-            'topic': topic,
-            'sources_found': len(news_sources),
-            'ai_processed': True,
-            'timestamp': 'Just now'
-        })
-        
-    except Exception as e:
-        print(f"❌ Server error: {e}")
-        return jsonify({
-            'error': str(e),
-            'fallback': f"News about {data.get('topic', 'current events')}. Try again soon."
-        }), 500
+def generate_fallback_news(country, topic, language):
+    """Simple fallback if Groq fails"""
+    fallback_text = f"""
+📰 **NEWS UPDATE: {topic.upper()} IN {country.upper()}**
 
-def translate_with_ai(text, target_lang):
-    """Translate using AI"""
+Key developments are underway regarding {topic.lower()} in {country}. 
+
+Recent reports indicate significant activity in this area, with stakeholders closely monitoring the situation.
+
+**Latest Information:**
+• Important discussions are taking place
+• Several key factors are being considered
+• The situation continues to evolve
+
+**Context:** This development aligns with broader regional and global trends.
+
+**Next Steps:** Further updates are expected as more information becomes available.
+
+*Report generated by AI News Assistant*
+"""
+    return fallback_text
+
+def translate_with_groq(text, target_lang_code, target_lang_name):
+    """Translate using Groq"""
     try:
-        if not GROQ_API_KEY:
-            return None
-            
-        prompt = f"Translate this news report to {target_lang} language. Keep journalistic tone:\n\n{text}"
-        
+        prompt = f"""Translate this news report to {target_lang_name} language.
+Keep the journalistic tone, formatting, and section headers exactly as they are.
+Only translate the content, not the emojis or formatting markers.
+
+News report to translate:
+{text}"""
+
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+        
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.1-8b-instant",  # Fast for translation
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 2000
+            "temperature": 0.1,  # Low temperature for accurate translation
+            "max_tokens": 2500
         }
         
         response = requests.post(
@@ -265,29 +230,102 @@ def translate_with_ai(text, target_lang):
     
     return None
 
-@app.route('/test_search', methods=['GET'])
-def test_search():
-    """Test endpoint to verify search works"""
-    test_sources = search_web_news("Global", "Technology")
+@app.route('/get_news', methods=['POST', 'OPTIONS'])
+def get_news():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     
+    try:
+        data = request.get_json()
+        country = data.get('country', 'Global')
+        topic = data.get('topic', 'Breaking News')
+        original_language = data.get('original_language', 'en')
+        needs_translation = data.get('needs_translation', False)
+        
+        print(f"📡 Request: {country} | {topic}")
+        
+        # Determine language name from code
+        language_names = {'en': 'English', 'ar': 'Arabic', 'ku': 'Kurdish'}
+        language = language_names.get(original_language, 'English')
+        
+        # Step 1: Generate news with Groq
+        print("🤖 Generating news report...")
+        english_news = generate_groq_news(country, topic, 'English')
+        
+        # Step 2: Translate if needed
+        translated_news = None
+        if needs_translation and original_language != 'en':
+            print(f"🌍 Translating to {language}...")
+            translated_news = translate_with_groq(english_news, original_language, language)
+        
+        return jsonify({
+            'description': english_news,
+            'translated_description': translated_news,
+            'success': True,
+            'country': country,
+            'topic': topic,
+            'language': language,
+            'ai_provider': 'Groq AI',
+            'model': 'mixtral-8x7b-32768',
+            'timestamp': datetime.now().isoformat(),
+            'note': 'AI-generated news report based on training data'
+        })
+        
+    except Exception as e:
+        print(f"❌ Server error: {e}")
+        return jsonify({
+            'error': str(e),
+            'fallback_news': f"Latest developments in {data.get('topic', 'news')} for {data.get('country', 'the region')}. More updates to follow.",
+            'success': False
+        }), 500
+
+@app.route('/test', methods=['GET'])
+def test():
+    """Test endpoint"""
     return jsonify({
-        'search_working': len(test_sources) > 0,
-        'sources_found': len(test_sources),
-        'sample_sources': test_sources[:2] if test_sources else []
+        'status': 'running',
+        'ai_provider': 'Groq',
+        'api_key_configured': bool(GROQ_API_KEY),
+        'endpoints': {
+            'POST /get_news': 'Get AI-generated news',
+            'GET /test': 'This test endpoint',
+            'GET /demo': 'Demo news generation'
+        },
+        'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/demo', methods=['GET'])
+def demo():
+    """Generate a demo news report"""
+    try:
+        demo_news = generate_groq_news('Global', 'Technology', 'English')
+        
+        return jsonify({
+            'demo': True,
+            'country': 'Global',
+            'topic': 'Technology',
+            'news': demo_news[:500] + "..." if len(demo_news) > 500 else demo_news,
+            'full_length': len(demo_news)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
     
-    print(f"\n" + "="*50)
-    print("🤖 AI NEWS SEARCHER SERVER")
-    print("="*50)
-    # print(f"🔍 Web Search: {'✅ Tavily' if TAVILY_API_KEY else '✅ Serper' if SERPER_API_KEY else '❌ Not configured'}")
-    print(f"🤖 Groq AI: {'✅ Available' if GROQ_API_KEY else '❌ Not configured'}")
+    print(f"\n" + "="*60)
+    print("🤖 PURE GROQ NEWS SERVER")
+    print("="*60)
+    print(f"🔑 API Key: {'✅ Loaded' if GROQ_API_KEY else '❌ Missing'}")
     print(f"🌐 Port: {port}")
-    print("\nEndpoints:")
-    print(f"  POST /get_news     - Get AI-searched news")
-    print(f"  GET  /test_search  - Test search function")
-    print("="*50)
+    print(f"📰 Countries supported: {len(COUNTRY_PROMPTS)}")
+    print(f"📊 Topics: Comprehensive coverage")
+    print("\n📋 Endpoints:")
+    print(f"  POST /get_news - Main news endpoint")
+    print(f"  GET  /test     - Server status")
+    print(f"  GET  /demo     - Demo news")
+    print("\n💡 Note: This generates realistic news reports using Groq AI.")
+    print("="*60)
     
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
